@@ -11,7 +11,7 @@ This file is the persistent record across sessions. Update it at the end of ever
 
 | Level | Meaning | Status (2026-11-23) |
 |---|---|---|
-| L0 Build | Code compiles | ✅ upstream `main` builds here (Linux native and Windows cross-build); integration branch: see log |
+| L0 Build | Code compiles | ✅ upstream `main` and our integration branch both build here (Linux native and Windows cross-build) |
 | L1 Synthetic tests | Unit/semantic/GPU tests without game files pass | ✅ mostly, details in the log below |
 | L2 Real executable maps | `gta6rt --dry-run` / `--init` on the user's `game_scarlett_master.exe` | ❌ **not run by us**; upstream measured it once (`docs/runtime_imports.md`, RT-5) |
 | L3 Boot progresses | `gta6rt --run` advances through the retail boot chain | ❌ **not run by us**; upstream frontier is stop 17 (docs PR #6982), and PRs mention stops 19–20 |
@@ -85,6 +85,49 @@ Upstream `main` @ `042c5f37`, baseline results:
 | pytest set (CI `translator-tests` selection) | ⚠️ 1,821 passed, 9 skipped, 3 failed in asset/report tools off the boot path (`test_tex_export` ×2, `test_user_sgpr_census` folding-volume case). Not investigated |
 | Windows cross-build (clang-cl 19 + xwin) | ✅ 384/384 (the first try failed on our setup: it picked up the distro's Vulkan 1.3.275 headers instead of the pinned 1.4.363) |
 | Windows tests under Wine | Ubuntu's Wine 9.0 crashes at startup in this container (`free(): invalid pointer`), so we used WineHQ stable 11.0 (CI's other flavour). ⚠️ **219/240 passed, 21 failed.** All six CI-required tests pass (loader, pe_loader, loader_tls, unimplemented_policy, run_tiny_game, run_tiny_game_exit_code). The 21 failures trace to this headless environment: no DXGI/D3D12 under Wine (device_proxy: "no DXGI factory"), no window under Xvfb (d3d12_present, dxgi_swapchain), and fixture paths that expect a multi-config `RelWithDebInfo\` layout. This list is the **baseline**: the integration branch must add no new failures |
+
+Integration branch `boot-chain` @ `3477a271` (bundle in `leonida/`):
+
+| Suite | Result |
+|---|---|
+| Windows cross-build | ✅ 571/571, after one fix of ours (`xs_proxy_mock_test`: #7075 and #7240 each added a slot-27 mock; merged into one, and a `constexpr` enum cast clang rejects made `const`) |
+| Windows tests under Wine 11 | 232/248 passed, 16 failed. Compared with the baseline: **no regression traced to the merges.** `d3d12_residency` and `d3d12_heap_properties` fail the same way on plain `main` when run alone (Wine's host D3D12 differs from run to run). The two new failing tests come from the merged PRs: `run_tiny_tls_ga` (#4313) passes its real check (`tls_index=0 main=42 thread=42 OK` under `--run`) and fails only the negative case, because Wine doesn't pass a Unix `TMP`/`TEMP` through to the Windows process. `dstorage` (#4348) fails one stats-timing check that pauses a copy on a `PAGE_GUARD` page; probably Wine's guard-page handling, **unverified until a Windows run** |
+| Linux build + ctest | ✅ 60/60 |
+| `tests/test_cpu_feature_scan.py` (#7111) | ✅ 22/22. Under Wine, `gta6rt` also reported "this CPU lacks SSE4a CLZERO MONITORX; the game's uses are emulated" on this Intel host, so the detection runs |
+
+### Next steps (in order)
+
+1. **User, on their PC:** follow "First run on your PC" below and send back the outputs listed there.
+2. Us: triage the trace with `tools/boot_trace.py`, find the first stop on your machine, and fix it (or merge the
+   upstream PR that does).
+3. Keep the bundle current. Upstream moves fast (dozens of RT-5 PRs a day): re-check open PRs for stops 17+ each
+   session, and drop our merges as they land on `main`.
+4. Not started: anything past stop 20, the first draw and present, shaders on a real GPU through the game.
+
+### First run on your PC (what to run and send back)
+
+Nothing here sends game data anywhere. Send back **only** the summaries named below, never game files, traces quoting
+game strings, or shader dumps.
+
+```powershell
+# 1. Hardware facts
+python -I tools/pc_checker.py --check --json          # from the Leonida checkout; send the JSON
+# 2. Check your copy (reads sizes; add --full-check for SHA-256 of every file)
+python -I make_game.py --check --game "D:\path\to\package"   # send the last ~20 lines
+# 3. Build what is needed to run (about 30 GB), from the boot-chain checkout
+python -I make_game.py --game "D:\path\to\package" --stages check,shaders,runtime
+# 4. Dry run and init (no game code runs in --dry-run)
+$env:LEONIDA_D3D12 = 'vulkan'
+.\runtime\build\gta6rt.exe --dry-run "D:\path\to\game_scarlett_master.exe" --game-dir "D:\path\to\package" --overlay "$env:TEMP\leonida-overlay"
+.\runtime\build\gta6rt.exe --init    "D:\path\to\game_scarlett_master.exe" --game-dir "D:\path\to\package" --overlay "$env:TEMP\leonida-overlay"
+# 5. First real run, network OFF (the executable's ws2_32 imports bind to the host)
+.\runtime\build\gta6rt.exe --run "D:\path\to\game_scarlett_master.exe" --game-dir "D:\path\to\package" `
+    --overlay "$env:TEMP\leonida-overlay" --trace "$env:TEMP\boot.jsonl" --trace-d3d12 2>&1 |
+    ForEach-Object { $_.ToString() } | Out-File -LiteralPath "$env:TEMP\d3d12.log" -Width 4096 -Encoding utf8
+python -I tools\boot_trace.py "$env:TEMP\boot.jsonl" --d3d12 "$env:TEMP\d3d12.log"   # send this summary
+# 6. The runtime tests on real Windows (settles the Wine-only questions above)
+ctest --test-dir runtime\build -C RelWithDebInfo --output-on-failure   # send the failed-test list
+```
 
 ### How to reproduce this environment (cloud session)
 
