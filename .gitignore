@@ -1,0 +1,2 @@
+# xwin download cache (Microsoft CRT/SDK files, build tooling only; never commit)
+.xwin-cache/
