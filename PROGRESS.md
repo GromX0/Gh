@@ -39,8 +39,13 @@ gameplay scene, with no hang or device loss over a 10-minute session.
 
 ## Current state
 
-- Fork `main` @ `31714de` (2026-11-24). It moves fast, taking outside branches as single commits. Each session
-  re-checks it before working.
+- Fork `main` @ `c96b4f2` (2026-11-25), as reported by its author (RTX 4070). The depth bounds test now works, so
+  the first room is lit by its lamp. The speed switches are now **on by default**: relay stage 2, wide copy-back,
+  card buffers 1 MiB to 1,024 MB, 256 lists in flight. About 230 ms/frame where it was about 400. Textures are
+  uploaded before the decoration bake, and there's one host copy per placed texture. Known: the first room's walls
+  are sometimes missing, and shaded areas are still too dark (no ray-tracing structures).
+  **Its plain build fails CI's clippy gate** (`placed_filler_twins` never used without the diagnostics feature).
+  Our branch `fix-clippy-placed-filler` fixes it.
 - User's PC (stated by the user, 2026-11-25; to be confirmed by the baseline's `hardware.txt`): **AMD Ryzen 7
   9800X3D** (Zen 5) and **AMD Radeon RX 9070** (RDNA 4). OS, RAM, driver version and the game copy: unknown. Nothing
   has been reproduced there yet.
@@ -116,13 +121,27 @@ Triage of batch 2026-11-25 00:53 (agent read PRs #436–#446 as commits and test
 | fork PR | 438 | textures up to 8 frames stale (intro flicker) fixed; tested on WARP only | in `integration` |
 | upstream PR | 1917 | opt-in AMD frame generation in host upscaling | later only: it doesn't lower real frame time |
 
+Triage of batch 2026-11-25 01:46 (53 fork items, 41 upstream PRs; agent read about 15, the rest by title):
+
+| Where | # | What | For us |
+|---|---|---|---|
+| fork PR | 156 (in bundle #487) | `slot_address` lowering, not wave-width-specific. On 32-lane hosts with the bundle, 4 of 5 shadow traces and 52/52 builder programs translate. The 3 builder failures #497 addresses are 32-lane-specific | **in `integration`.** On the 9070's 64-lane waves the builder may already translate in full: the PC run's translate counts settle it |
+| fork PR | 452 | buffer `getDimensions` heap handles marked non-uniform, against an `amdxc64.dll` 0xc0000005 driver crash. An RX 7800 XT reviewer couldn't reproduce it and suspects RDNA 4 (an RX 9070 XT is cited) | **in `integration`**: likely our fork #422 risk |
+| upstream PR | 1936 | refuse translated shaders the DXIL validator rejects. On an RX 9060 XT (RDNA 4), runs went from 42–90 s to 5 min 40 s before failing | fallback if `amdxc64` still crashes with #452 |
+| fork PR | 464 | BVH: reject partial-axis NaN and inverted boxes (min ≤ max) | **declined, as #414**: RADV checks only min-x NaN, and fmin/fmax orders inverted boxes; the fork already matches it |
+| fork PR | 467 | time split in the fps line | changes the same format string as our fix. Expect a conflict; no measured frame-time change |
+| fork PRs | 465, 470 | NVIDIA measurements: remap-lock and texture waits; ~300 pipelines stuck waiting; a pipeline-cache double-create race in #470's comments | switches to try: `VICTORY_COPY_COMPARE=1`, `VICTORY_TEXTURE_NO_WAIT=1` |
+| fork PR | 497 | builder runs on 32-lane GPUs, but the title crashes in ~15 s | NVIDIA path; not ours |
+| upstream PR | 1923 | async submissions on a host fence timeline: 16–33 ms/frame saved on an RTX 5090; its AMD repeated-recording test fails, and it conflicts with the fork's relay | hold |
+| fork PR | 450 | report of a fork `myokex/victory-amd` (adds upstream #175, scoped title-memory locks); reached the world on an RTX 4080 | not tested on AMD; watch |
+
 ### Read cursor: only what is newer than this is read next time
 
 | Source | Last seen |
 |---|---|
-| `fxceless/victory-fork` main | commit `a803c87` (read and triaged 2026-11-25 ~00:50 UTC) |
-| `fxceless/victory-fork` PRs / issues | #446 |
-| `Marvisak/VIctory` open PRs | #1917; main `42363ab` |
+| `fxceless/victory-fork` main | commit `c96b4f2` (read and triaged 2026-11-25 ~01:50 UTC) |
+| `fxceless/victory-fork` PRs / issues | #499 |
+| `Marvisak/VIctory` open PRs | #1961; main `940d32f` |
 | Forks | surveyed 2026-11-25 ~00:40 UTC (most-recently-updated list) |
 
 ### Watching between passes
@@ -156,12 +175,13 @@ container reset, seed it from the cursor above. The 3-hourly scheduled task cove
 
 ```powershell
 cd <victory-fork checkout>
-git fetch origin; git checkout 31714de            # or the commit named in "Current state"
-git remote add mine https://github.com/thomb2123/victory-fork; git fetch mine   # optional: our branch
+git remote add mine https://github.com/thomb2123/victory-fork; git fetch mine
+git checkout mine/builder-diagnostics              # run 1; then mine/integration for the A/B
 copy victory.example.toml victory.toml             # set game_dir (outside the repo)
 powershell -ExecutionPolicy Bypass -File <this repo>\victory\tools\baseline.ps1 -GameExe '<game dir>\<the title's exe>'
-# the same run with the fork's newer speed switches, to compare:
-powershell -ExecutionPolicy Bypass -File <this repo>\victory\tools\baseline.ps1 -SkipTests -SkipBuild -GameExe '...' -Switches @{ VICTORY_RELAY = '2' }
+# the speed switches #431 used are now the defaults (c96b4f2); compare with the old defaults, and with #465/#470's:
+powershell -ExecutionPolicy Bypass -File <this repo>\victory\tools\baseline.ps1 -SkipTests -SkipBuild -GameExe '...' -Switches @{ VICTORY_RELAY = '0'; VICTORY_WIDE_BACK = '0'; VICTORY_CARD_BUFFERS_MIN_MB = '16'; VICTORY_CARD_BUFFERS_MB = '512'; VICTORY_LATE_WAIT_LISTS = '128' }
+powershell -ExecutionPolicy Bypass -File <this repo>\victory\tools\baseline.ps1 -SkipTests -SkipBuild -GameExe '...' -Switches @{ VICTORY_TEXTURE_NO_WAIT = '1' }
 # the ray-tracing builder question (diagnostics build; send the "structure builder" lines of summary.txt):
 powershell -ExecutionPolicy Bypass -File <this repo>\victory\tools\baseline.ps1 -SkipTests -SkipBuild -GameExe '...' -Switches @{ VICTORY_BVH_BUILDER = '1'; VICTORY_BVH_QUARANTINE = '1' }
 ```
@@ -180,8 +200,9 @@ process memory, and NVIDIA GPU load (from `nvidia-smi`, if present).
 
 | Branch | On | Commits | State |
 |---|---|---|---|
-| `builder-diagnostics` | `a803c87` (fork main) | `7f2dde8` builder stages without a host pipeline named in the log (diagnostics builds); `bfabefc` the per-frame log line no longer carries runs of 18 spaces (three line continuations had been joined into its format string) | cross-build ✅, both clippy gates ✅, `victory-gpu` tests under Wine 111/112 (the Wine-only sparse-copy failure). **Not run on a GPU.** No PR yet |
-| `integration` | `builder-diagnostics` | merges of fork PRs #426 (DirectStorage reads into guarded memory), #437 (device-removed report in every build), #438 (view-memory textures refreshed after host writes), #440–#446 (AscilCH's translator miscompile fixes), each its own merge commit | merged without conflicts; both clippy gates ✅; Linux 225/0; Windows/Wine 492 passed, 28 failed, **the same 28 environmental failures as fork main**. **Not run on a GPU.** For A/B against `builder-diagnostics` on the PC |
+| `fix-clippy-placed-filler` | `c96b4f2` (fork main) | `48e3435` `placed_filler_twins` compiled only with the diagnostics feature, like its one caller | fixes fork main's red clippy gate; both gates ✅. **Candidate for a PR to `fxceless`** (needs the user's OK) |
+| `builder-diagnostics` | `fix-clippy-placed-filler` | `15db4e0` builder stages without a host pipeline named in the log (diagnostics builds); `725851a` the per-frame log line no longer carries runs of 18 spaces | both clippy gates ✅; Windows/Wine 477 passed, the same 28 environmental failures; Linux 217/0. **Not run on a GPU** |
+| `integration` | `builder-diagnostics` | merges of fork PRs #426, #437, #438, #440–#446 (see batch 2), **#452** (buffer `getDimensions` heap handles non-uniform: the AMD `amdxc64.dll` crash, suspected RDNA 4) and **#156** (`slot_address` lowering: trace programs that read their structure's address from a heap view at a computed index; no wave-width gate) | merged without conflicts; both clippy gates ✅; Windows/Wine 495 passed, the same 28 environmental failures; Linux 226/0. **Not run on a GPU.** For A/B against `builder-diagnostics` |
 
 ### Session 2 — 2026-11-25 (cloud; no game, no GPU)
 
