@@ -94,11 +94,21 @@ Relevant to our blockers:
 | upstream PR | 1883 | lane masks a traversal keeps as numbers | ray traversal translation |
 | upstream PRs | 1898, 1894, 1888, 1884, 1869, 1865, 1873 | pipeline scheduling, upload pools, copy plans, memory-guard batching, copy-back ranges, dirty bitmaps, detile scratch | CPU-side frame-time candidates; which matter depends on our baseline split |
 
+Triage of batch 2026-11-25 00:43 (a background agent read the a803c87 diff and the PR/issue pages; not tested by us):
+
+| Where | # | What | For us |
+|---|---|---|---|
+| fork main | a803c87 | textures picked by index are re-checked after upload (4/12/40/120/400 frames) and re-uploaded if changed. Fixes the main character's face rendering black and hair pale in ~3 of 4 launches. `VICTORY_HEAP_RECHECK=0` turns it off | correctness fix, on main. Measure the frame-time cost with and without it |
+| fork PR | 426 | DirectStorage read refused (`0x800706f8`) into guarded memory copied through a buffer. Fixed a cold-shader-cache crash at world load on an RTX 3070 Ti (3/3 crashed before, 3/3 reached the world after) | take it if our first runs hit that error or breakpoint `0x80000003` |
+| fork issue | 424 | RTX 3090: 60 min stable, 278 ms mean (3.6 fps); 170–570 draws per frame dropped, mostly the ray-tracing builder; ~25 GB process memory, +4.5 GB at a scene change | slow frames aren't NVIDIA-only. **RAM matters: need the user's RAM size** |
+| fork PR | 423 | Series S compositor; adds `VICTORY_HEAP_TEXTURES_MS/MB` budgets | later, as a frame-time switch |
+| fork issue | 427 | RTX 4060: 6 shaders don't translate, 7 pipelines refused (`0x80070057`) | same pattern as the builder question |
+
 ### Read cursor: only what is newer than this is read next time
 
 | Source | Last seen |
 |---|---|
-| `fxceless/victory-fork` main | commit `a803c87` (read by the watcher 2026-11-25 00:43 UTC; triage of 31714de..a803c87 in progress) |
+| `fxceless/victory-fork` main | commit `a803c87` (read and triaged 2026-11-25 ~00:50 UTC) |
 | `fxceless/victory-fork` PRs / issues | #428 |
 | `Marvisak/VIctory` open PRs | #1911; main `42363ab` |
 | Forks | surveyed 2026-11-25 ~00:40 UTC (most-recently-updated list) |
@@ -135,7 +145,7 @@ container reset, seed it from the cursor above. The 3-hourly scheduled task cove
 ```powershell
 cd <victory-fork checkout>
 git fetch origin; git checkout 31714de            # or the commit named in "Current state"
-git am <this repo>\victory\patches\0001-*.patch    # optional: the builder diagnostic (Session 2)
+git remote add mine https://github.com/thomb2123/victory-fork; git fetch mine   # optional: our branch
 copy victory.example.toml victory.toml             # set game_dir (outside the repo)
 powershell -ExecutionPolicy Bypass -File <this repo>\victory\tools\baseline.ps1 -GameExe '<game dir>\<the title's exe>'
 # the same run with the fork's newer speed switches, to compare:
@@ -153,6 +163,12 @@ frame, warnings and errors grouped by kind, ray-tracing builder lines, new `cras
 process memory, and NVIDIA GPU load (from `nvidia-smi`, if present).
 
 ## Session log
+
+### Our fork: `thomb2123/victory-fork` (created by the user 2026-11-25)
+
+| Branch | On | Commits | State |
+|---|---|---|---|
+| `builder-diagnostics` | `a803c87` (fork main) | `7f2dde8` builder stages without a host pipeline named in the log (diagnostics builds); `bfabefc` the per-frame log line no longer carries runs of 18 spaces (three line continuations had been joined into its format string) | cross-build ✅, both clippy gates ✅, `victory-gpu` tests under Wine 111/112 (the Wine-only sparse-copy failure). **Not run on a GPU.** No PR yet |
 
 ### Session 2 — 2026-11-25 (cloud; no game, no GPU)
 
