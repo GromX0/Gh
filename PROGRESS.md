@@ -135,13 +135,47 @@ Triage of batch 2026-11-25 01:46 (53 fork items, 41 upstream PRs; agent read abo
 | upstream PR | 1923 | async submissions on a host fence timeline: 16–33 ms/frame saved on an RTX 5090; its AMD repeated-recording test fails, and it conflicts with the fork's relay | hold |
 | fork PR | 450 | report of a fork `myokex/victory-amd` (adds upstream #175, scoped title-memory locks); reached the world on an RTX 4080 | not tested on AMD; watch |
 
+### RDNA 4: what others have found (batch 2026-11-25 02:17; an agent read fork #505, #543, #422, #558 and upstream #1972)
+
+This replaces guesswork about the user's card, but it is still other people's results, not ours.
+
+1. **Driver shader-compiler crash.** Fork #505 (RX 9070, Adrenalin 26.11.2) crashes in `amdxc64.dll+0x861b9f`
+   before the world. #422 ties it to the translator's clean-up pass 4 (REUSE). **`VICTORY_SHADER_OPT=59` (every
+   pass except 4) clears it**, confirmed in #543 on an RX 9070 XT at `c96b4f2`. Two programs (`c1eee35dbc50a9ef`,
+   `f16876929fa64f9f`) still crash with every pass off; upstream #1972 adds tooling to skip pipelines the driver
+   crashes on. **Every run on the user's PC starts with `VICTORY_SHADER_OPT=59`.** #452 (in `integration`) hasn't
+   been tried against this crash.
+2. **The ray-tracing builder runs on RDNA 4.** #543: with 64-lane waves every builder pipeline gets a host pipeline
+   (`VICTORY_BVH_BUILDER=1`, `SHADER_OPT=59`, `LOOP_LIMIT=256`, `RELAY=2`). The frame looked lit, but refresh of
+   title memory grew to 86,959 MB/frame (3,752 ms/frame, 0 fps). With the builder off, one run lost the device
+   (page fault at `0x2a0b000`). **On RDNA 4 the shadow blocker is now the cost of keeping title memory in sync,
+   not translation.**
+3. **Why the refresh explodes (our reading of `crates/victory-gpu/src/memory.rs` `ready()`; a hypothesis):** for a
+   dispatch that reaches memory by address, every numbered copy (up to 1,023, mostly 4 MiB windows; #543 had 962)
+   is refreshed at the first such read in each host list, and declared GPU-written at the first such write. The
+   module's own `shortcut:` note says so, and names the fix: "a dirty-page mask written by the shader would bound
+   both". 962 × 4 MiB ≈ 3.8 GB per list, so about 22 lists a frame with builder dispatches gives #543's ~87 GB.
+   With 256 lists in flight by default (`c96b4f2`), the builder's hundreds of dispatches span many lists.
+4. **Levers, cheapest first:**
+   a. `VICTORY_INPLACE=1`: title memory opened as a graphics heap, so a copy is the title's memory itself and
+      refresh and copy-back do nothing (`Shadow::placed` in `shadow.rs`). Experimental, first stage only, untested
+      on AMD. **One PC run answers whether it removes the refresh cost.**
+   b. Fewer lists per frame for builder work (e.g. `VICTORY_LATE_WAIT_LISTS`), so the per-list refresh happens
+      less often. Measure.
+   c. The real fix: a dirty-page mask the translated shader writes on each store by address, so only touched
+      pages are copied back and invalidated. Translator and host work. Start it only if (a) fails.
+
+PC run plan for the shadows (after the plain baseline; all with `VICTORY_SHADER_OPT=59`, on `integration`):
+`VICTORY_BVH_BUILDER=1 VICTORY_BVH_QUARANTINE=1` (reproduce #543 and get our own numbers), then the same plus
+`VICTORY_INPLACE=1`.
+
 ### Read cursor: only what is newer than this is read next time
 
 | Source | Last seen |
 |---|---|
 | `fxceless/victory-fork` main | commit `c96b4f2` (read and triaged 2026-11-25 ~01:50 UTC) |
-| `fxceless/victory-fork` PRs / issues | #499 |
-| `Marvisak/VIctory` open PRs | #1961; main `940d32f` |
+| `fxceless/victory-fork` PRs / issues | #561 |
+| `Marvisak/VIctory` open PRs | #1981 |
 | Forks | surveyed 2026-11-25 ~00:40 UTC (most-recently-updated list) |
 
 ### Watching between passes
@@ -178,7 +212,8 @@ cd <victory-fork checkout>
 git remote add mine https://github.com/thomb2123/victory-fork; git fetch mine
 git checkout mine/builder-diagnostics              # run 1; then mine/integration for the A/B
 copy victory.example.toml victory.toml             # set game_dir (outside the repo)
-powershell -ExecutionPolicy Bypass -File <this repo>\victory\tools\baseline.ps1 -GameExe '<game dir>\<the title's exe>'
+# RX 9070: always pass VICTORY_SHADER_OPT=59 (driver compiler crash, fork #505/#422); add it to every -Switches below too
+powershell -ExecutionPolicy Bypass -File <this repo>\victory\tools\baseline.ps1 -GameExe '<game dir>\<the title's exe>' -Switches @{ VICTORY_SHADER_OPT = '59' }
 # the speed switches #431 used are now the defaults (c96b4f2); compare with the old defaults, and with #465/#470's:
 powershell -ExecutionPolicy Bypass -File <this repo>\victory\tools\baseline.ps1 -SkipTests -SkipBuild -GameExe '...' -Switches @{ VICTORY_RELAY = '0'; VICTORY_WIDE_BACK = '0'; VICTORY_CARD_BUFFERS_MIN_MB = '16'; VICTORY_CARD_BUFFERS_MB = '512'; VICTORY_LATE_WAIT_LISTS = '128' }
 powershell -ExecutionPolicy Bypass -File <this repo>\victory\tools\baseline.ps1 -SkipTests -SkipBuild -GameExe '...' -Switches @{ VICTORY_TEXTURE_NO_WAIT = '1' }
@@ -202,7 +237,7 @@ process memory, and NVIDIA GPU load (from `nvidia-smi`, if present).
 |---|---|---|---|
 | `fix-clippy-placed-filler` | `c96b4f2` (fork main) | `48e3435` `placed_filler_twins` compiled only with the diagnostics feature, like its one caller | fixes fork main's red clippy gate; both gates ✅. **Candidate for a PR to `fxceless`** (needs the user's OK) |
 | `builder-diagnostics` | `fix-clippy-placed-filler` | `15db4e0` builder stages without a host pipeline named in the log (diagnostics builds); `725851a` the per-frame log line no longer carries runs of 18 spaces | both clippy gates ✅; Windows/Wine 477 passed, the same 28 environmental failures; Linux 217/0. **Not run on a GPU** |
-| `integration` | `builder-diagnostics` | merges of fork PRs #426, #437, #438, #440–#446 (see batch 2), **#452** (buffer `getDimensions` heap handles non-uniform: the AMD `amdxc64.dll` crash, suspected RDNA 4) and **#156** (`slot_address` lowering: trace programs that read their structure's address from a heap view at a computed index; no wave-width gate) | merged without conflicts; both clippy gates ✅; Windows/Wine 495 passed, the same 28 environmental failures; Linux 226/0. **Not run on a GPU.** For A/B against `builder-diagnostics` |
+| `integration` | `builder-diagnostics` | merges of fork PRs #426, #437, #438, #440–#446 (see batch 2), **#452** (buffer `getDimensions` heap handles non-uniform: the AMD `amdxc64.dll` crash, suspected RDNA 4) **#156** (`slot_address` lowering: trace programs that read their structure's address from a heap view at a computed index; no wave-width gate) and **#558** (barrier-free all-lane forms retried on native wave64 hosts; tested by its author on an RX 9070) | merged without conflicts; both clippy gates ✅; Windows/Wine 497 passed, the same 28 environmental failures; Linux 226/0. **Not run on a GPU.** For A/B against `builder-diagnostics` |
 
 ### Session 2 — 2026-11-25 (cloud; no game, no GPU)
 
