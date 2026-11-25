@@ -103,6 +103,7 @@ Triage of batch 2026-11-25 00:43 (a background agent read the a803c87 diff and t
 | fork issue | 424 | RTX 3090: 60 min stable, 278 ms mean (3.6 fps); 170–570 draws per frame dropped, mostly the ray-tracing builder; ~25 GB process memory, +4.5 GB at a scene change | slow frames aren't NVIDIA-only. **RAM matters: need the user's RAM size** |
 | fork PR | 423 | Series S compositor; adds `VICTORY_HEAP_TEXTURES_MS/MB` budgets | later, as a frame-time switch |
 | fork issue | 427 | RTX 4060: 6 shaders don't translate, 7 pipelines refused (`0x80070057`) | same pattern as the builder question |
+| fork PR | 414 | BVH box test: an absent child (pointer `0xFFFFFFFF`) whose bounds pass the slab test no longer gets a finite sort key | **Reviewed by us, not taken.** It applies cleanly on `a803c87` and the shader tests pass (172; 16 ray-test). But AMD's own open-source emulation of this instruction, Mesa RADV `intersect_ray_amd_software_box` (`src/amd/vulkan/nir/radv_nir_rt_common.c`, Mesa `e175081`, 2026-11-24), turns a child off only by a NaN minimum x and never checks the pointer, which is what the fork does now. The PR would move the fork away from AMD's own implementation without evidence of console behaviour. Hardware behaviour is still unestablished |
 
 ### Read cursor: only what is newer than this is read next time
 
