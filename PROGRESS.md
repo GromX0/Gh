@@ -105,13 +105,24 @@ Triage of batch 2026-11-25 00:43 (a background agent read the a803c87 diff and t
 | fork issue | 427 | RTX 4060: 6 shaders don't translate, 7 pipelines refused (`0x80070057`) | same pattern as the builder question |
 | fork PR | 414 | BVH box test: an absent child (pointer `0xFFFFFFFF`) whose bounds pass the slab test no longer gets a finite sort key | **Reviewed by us, not taken.** It applies cleanly on `a803c87` and the shader tests pass (172; 16 ray-test). But AMD's own open-source emulation of this instruction, Mesa RADV `intersect_ray_amd_software_box` (`src/amd/vulkan/nir/radv_nir_rt_common.c`, Mesa `e175081`, 2026-11-24), turns a child off only by a NaN minimum x and never checks the pointer, which is what the fork does now. The PR would move the fork away from AMD's own implementation without evidence of console behaviour. Hardware behaviour is still unestablished |
 
+Triage of batch 2026-11-25 00:53 (agent read PRs #436–#446 as commits and test merges, #431 and upstream #1915 pages; the rest by title):
+
+| Where | # | What | For us |
+|---|---|---|---|
+| upstream PR | 1915 | lowers 32/64-bit global atomics: cmpswap, inc, dec, csub, `_x2` | the fork's raw-address path (`lower.rs` ~2883) refuses exactly these today. **Candidate for the 3 untranslated builder programs**, if the PC run names one of them; needs porting to that path, not a cherry-pick |
+| fork issue | 431 | RTX 2060 on `a803c87`: frame time doesn't change from 4K to 480p; mostly waiting (fetches 225–450 ms, submitting thread 140–340 ms, remapped title memory 75–500 ms). `VICTORY_RELAY=2 VICTORY_PIPELINE_WAIT_MS=24 VICTORY_CARD_BUFFERS_MIN_MB=1 VICTORY_CARD_BUFFERS_MB=1024` cut compares 430 → 35 MB/frame, best frame 172 ms | not resolution-bound, so not raw GPU power. **Our second baseline run uses this switch set**. Mind #417's report that some of these drop data |
+| fork PR | 437 | lite device-removed report in every build: last op finished, first unfinished with its pipeline, last 64 ops | for AMD hangs; in `integration`. Cost unmeasured |
+| fork PRs | 440–446 | translator miscompile fixes (dropped side effects, read-modify-write as overwrite, wrong skips, inactive-lane scalar conditions, `_g16` address decode, mixed descriptors) | in `integration`. Synthetic tests only, and some make the translator refuse more programs: recount builder (49/52) and trace (59/64) translation after the PC run |
+| fork PR | 438 | textures up to 8 frames stale (intro flicker) fixed; tested on WARP only | in `integration` |
+| upstream PR | 1917 | opt-in AMD frame generation in host upscaling | later only: it doesn't lower real frame time |
+
 ### Read cursor: only what is newer than this is read next time
 
 | Source | Last seen |
 |---|---|
 | `fxceless/victory-fork` main | commit `a803c87` (read and triaged 2026-11-25 ~00:50 UTC) |
-| `fxceless/victory-fork` PRs / issues | #428 |
-| `Marvisak/VIctory` open PRs | #1911; main `42363ab` |
+| `fxceless/victory-fork` PRs / issues | #446 |
+| `Marvisak/VIctory` open PRs | #1917; main `42363ab` |
 | Forks | surveyed 2026-11-25 ~00:40 UTC (most-recently-updated list) |
 
 ### Watching between passes
@@ -170,6 +181,7 @@ process memory, and NVIDIA GPU load (from `nvidia-smi`, if present).
 | Branch | On | Commits | State |
 |---|---|---|---|
 | `builder-diagnostics` | `a803c87` (fork main) | `7f2dde8` builder stages without a host pipeline named in the log (diagnostics builds); `bfabefc` the per-frame log line no longer carries runs of 18 spaces (three line continuations had been joined into its format string) | cross-build ✅, both clippy gates ✅, `victory-gpu` tests under Wine 111/112 (the Wine-only sparse-copy failure). **Not run on a GPU.** No PR yet |
+| `integration` | `builder-diagnostics` | merges of fork PRs #426 (DirectStorage reads into guarded memory), #437 (device-removed report in every build), #438 (view-memory textures refreshed after host writes), #440–#446 (AscilCH's translator miscompile fixes), each its own merge commit | merged without conflicts; both clippy gates ✅; Linux 225/0; Windows/Wine 492 passed, 28 failed, **the same 28 environmental failures as fork main**. **Not run on a GPU.** For A/B against `builder-diagnostics` on the PC |
 
 ### Session 2 — 2026-11-25 (cloud; no game, no GPU)
 
