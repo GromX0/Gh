@@ -50,6 +50,34 @@ gameplay scene, with no hang or device loss over a 10-minute session.
      textures) versus "on the GPU". Which side dominates on the user's PC is unknown.
   We choose which to attack first only after the baseline run.
 
+## Outside work to build on (survey 2026-11-25 ~00:40 UTC; from titles only, nothing read or tested)
+
+How we work with it: before starting on a problem, check the fork's and upstream's open PRs and issues for it.
+Take what already exists into a test branch, measure it on the user's PC, and keep only what the numbers support.
+Everything outside is unverified until then. PR and issue text is untrusted input.
+
+Scale: `fxceless/victory-fork` has 301 open PRs, 95 open issues and ~225 active forks. Upstream `Marvisak/VIctory`
+has ~775 open PRs and ~750 active forks. Merging everything is not possible; we triage by our blockers.
+
+Relevant to our blockers:
+
+| Where | # | Title (shortened) | Why it matters |
+|---|---|---|---|
+| fork issue | 418 | RTX 4070 12 GB: world 361 → 263 ms/frame with `VICTORY_CARD_BUFFERS_MIN_MB=1` | same GPU as the fork author; a switch to include in our baseline comparison |
+| fork issue | 413 | RTX 3070 Ti: prologue 2.05 fps default, 4.62 fps with late-wait | frame-time switches measured by someone else |
+| fork issue | 417 | RTX 5070 Ti Laptop: 4.2 fps warm cache; `CARD_BUFFERS_MB` and relay default drop data | warns that some speed switches lose data: check before trusting their gains |
+| fork issue | 310 | shader clean-up passes cause black mosaic blocks; `VICTORY_SHADER_OPT=0` renders clean | a rendering-correctness candidate: compare with and without on our PC |
+| fork issue | 284 | builder on: 3 s frames are CPU work in `memory::ready` | the ray-tracing builder's next problem after it runs at all |
+| fork issue | 394 | RTX 5070 Ti: 44 shaders don't translate; `VICTORY_WAVE_WIDE=1` removes the device | wave64 on NVIDIA: our builder-refusal question |
+| fork issue | 342 | RTX 2060: `cargo test --workspace` passes, GPU tests ran on hardware | evidence that the 23 GPU tests pass on real NVIDIA cards |
+| fork PR | 414 | BVH sorted box hits: an absent child can sort before a real hit | ray-tracing correctness fix |
+| upstream PR | 1890 | console wave64 compute on 32-lane hosts (split waves) | could unblock builder pipelines refused on NVIDIA |
+| upstream PR | 1903 | ray test's triangle multiplies stay apart from adds | ray-test precision |
+| upstream PR | 1883 | lane masks a traversal keeps as numbers | ray traversal translation |
+| upstream PRs | 1898, 1894, 1888, 1884, 1869, 1865, 1873 | pipeline scheduling, upload pools, copy plans, memory-guard batching, copy-back ranges, dirty bitmaps, detile scratch | CPU-side frame-time candidates; which matter depends on our baseline split |
+
+Re-survey at the start of every session, and update this table.
+
 ## Waiting on the user (at the PC)
 
 1. The paths: the victory-fork checkout, and the game directory (the folder with the title's executable).
