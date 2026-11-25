@@ -200,6 +200,12 @@ try {
         } else {
             S '  no fps lines in the log (the title presented no frames, or the line format changed)'
         }
+        # diagnostics build: what the texture refresh is made of (watched writes vs hashed changes), last 6 lines
+        $tex = $log | Where-Object { $_ -match 'copies per frame:' } | Select-Object -Last 6
+        if ($tex) {
+            S '  copies per frame, texture part (last 6 lines: watched and changed / hashed / of them changed):'
+            foreach ($t in $tex) { if ($t -match 'textures ([\d.]+) MB watched and\s+changed, ([\d.]+) MB hashed, ([\d.]+) MB of them changed') { S ('    watched+changed {0} MB, hashed {1} MB, changed {2} MB' -f $Matches[1], $Matches[2], $Matches[3]) } }
+        }
         $builder = $log | Where-Object { $_ -match 'structure builder' } | Select-Object -First 40
         foreach ($b in $builder) { S "  $($b -replace '^\S+\s+', '')" }
         # warnings and errors grouped by message, numbers and hex blanked so repeats collapse

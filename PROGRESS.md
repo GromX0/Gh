@@ -150,20 +150,24 @@ This replaces guesswork about the user's card, but it is still other people's re
    title memory grew to 86,959 MB/frame (3,752 ms/frame, 0 fps). With the builder off, one run lost the device
    (page fault at `0x2a0b000`). **On RDNA 4 the shadow blocker is now the cost of keeping title memory in sync,
    not translation.**
-3. **Why the refresh explodes (our reading of `crates/victory-gpu/src/memory.rs` `ready()`; a hypothesis):** for a
-   dispatch that reaches memory by address, every numbered copy (up to 1,023, mostly 4 MiB windows; #543 had 962)
-   is refreshed at the first such read in each host list, and declared GPU-written at the first such write. The
-   module's own `shortcut:` note says so, and names the fix: "a dirty-page mask written by the shader would bound
-   both". 962 × 4 MiB ≈ 3.8 GB per list, so about 22 lists a frame with builder dispatches gives #543's ~87 GB.
-   With 256 lists in flight by default (`c96b4f2`), the builder's hundreds of dispatches span many lists.
+3. **What the 86 GB is: correction.** We read #543 directly. The author calls it "86 GB per frame of *texture*
+   refresh" ("every builder write invalidates host copies, and the refresh path re-uploads the world"). That is
+   texture uploads, not the `memory.rs` copies. Our first explanation (every numbered copy refreshed once per host
+   list, in `memory::ready()`) doesn't account for it, and is **withdrawn as the explanation**. The per-list refresh
+   in `ready()` is real, but nobody has measured its share. Open hypothesis: builder writes reach title memory
+   through copy-back, and write watching then marks textures that share those pages as changed, so whole textures
+   are re-uploaded although their texels are the same. The diagnostics build's `copies per frame:` line separates
+   the cases (`textures X MB watched and changed, Y MB hashed, Z MB of them changed`); `baseline.ps1` now extracts
+   that line.
 4. **Levers, cheapest first:**
-   a. `VICTORY_INPLACE=1`: title memory opened as a graphics heap, so a copy is the title's memory itself and
-      refresh and copy-back do nothing (`Shadow::placed` in `shadow.rs`). Experimental, first stage only, untested
-      on AMD. **One PC run answers whether it removes the refresh cost.**
-   b. Fewer lists per frame for builder work (e.g. `VICTORY_LATE_WAIT_LISTS`), so the per-list refresh happens
-      less often. Measure.
-   c. The real fix: a dirty-page mask the translated shader writes on each store by address, so only touched
-      pages are copied back and invalidated. Translator and host work. Start it only if (a) fails.
+   a. `VICTORY_INPLACE=1`: title memory opened as a graphics heap, so builder writes need no copy-back. Per
+      `Shadow::gpu_writes` the card's writes aren't seen by write watching, so watched invalidation should vanish
+      too. Experimental, first stage only, untested on AMD (#580 used it on an NVIDIA laptop to fill in more of the
+      first room).
+   b. Fewer lists in flight (`VICTORY_LATE_WAIT_LISTS`), to test any per-list cost.
+   c. Code: which fix depends on what the split shows. A shader-written dirty-page mask (`memory.rs`'s own
+      suggestion) bounds the copy-back. A finer-grained texture invalidation would address watched false
+      positives. **Paused until measured**: designed, not started.
 
 PC run plan for the shadows (after the plain baseline; all with `VICTORY_SHADER_OPT=59`, on `integration`):
 `VICTORY_BVH_BUILDER=1 VICTORY_BVH_QUARANTINE=1` (reproduce #543 and get our own numbers), then the same plus
