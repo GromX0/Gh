@@ -98,10 +98,18 @@ Relevant to our blockers:
 
 | Source | Last seen |
 |---|---|
-| `fxceless/victory-fork` main | commit `31714de` (2026-11-24 19:00 -0500) |
-| `fxceless/victory-fork` PRs / issues | PR #421, issue #422 |
-| `Marvisak/VIctory` open PRs | #1907 |
+| `fxceless/victory-fork` main | commit `a803c87` (read by the watcher 2026-11-25 00:43 UTC; triage of 31714de..a803c87 in progress) |
+| `fxceless/victory-fork` PRs / issues | #428 |
+| `Marvisak/VIctory` open PRs | #1911; main `42363ab` |
 | Forks | surveyed 2026-11-25 ~00:40 UTC (most-recently-updated list) |
+
+### Watching between passes
+
+`victory/tools/watch.sh STATE_DIR 600` runs in the background while a session is open. It costs no tokens: every
+10 minutes it checks both mains (`git ls-remote`) and new PR/issue numbers (GitHub search). When something is new it
+exits and wakes the session, which hands the batch to a background triage agent and restarts the watcher. Only
+items the agent rates important for us interrupt the user. Its state lives in the session scratchpad. After a
+container reset, seed it from the cursor above. The 3-hourly scheduled task covers the time no session is open.
 
 ### The continuous loop (each pass, whether started by the user or by the schedule)
 
