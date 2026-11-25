@@ -41,7 +41,25 @@ gameplay scene, with no hang or device loss over a 10-minute session.
 
 - Fork `main` @ `31714de` (2026-11-24). It moves fast, taking outside branches as single commits. Each session
   re-checks it before working.
-- Hardware and the game copy on the user's PC: **unknown**. The user isn't at the PC yet. Nothing is reproduced there.
+- User's PC (stated by the user, 2026-11-25; to be confirmed by the baseline's `hardware.txt`): **AMD Ryzen 7
+  9800X3D** (Zen 5) and **AMD Radeon RX 9070** (RDNA 4). OS, RAM, driver version and the game copy: unknown. Nothing
+  has been reproduced there yet.
+- **This is not the fork author's hardware** (Intel + NVIDIA), so their results are a weaker hypothesis for us.
+  What follows from the code (inferences, checked against the source, not yet run):
+  - CPU: the console is Zen 2. `crates/victory-loader/src/crash.rs` emulates AMD-only instructions (SSE4a
+    EXTRQ/INSERTQ, CLZERO, MONITORX) **only on Intel**; on an AMD CPU they run natively. Expected to run natively on
+    the 9800X3D. Unverified: Zen 5's support for each of these.
+  - GPU waves: the translator's 32-lane workaround for console wave64 compute programs applies only when the host's
+    widest wave is 32 (`crates/victory-shader/src/emit/lower.rs`, `host_max_wave() == 32`). An AMD card that reports
+    64-lane waves gets `WaveSize(64)` programs as the console runs them. So the doc's reason "builder pipelines
+    refused: 64-lane waves on a 32-lane GPU" **should not apply to us**. The run's `host wave lanes` log line
+    confirms the reported range.
+  - AMD-specific risks reported by others (unverified): fork issue #422, the AMD driver's shader compiler crashing
+    during first-boot screens; #321, an RX 7600 XT driver hang avoided with `VICTORY_WAVE_WIDE=1`, and
+    `VICTORY_RELAY=2` running out of memory; upstream's README warns that entering the world can hang an AMD GPU
+    (RX 6700 XT); the source notes AMD driver hangs on divergent loops. Fork main already has an AMD view-heap fix
+    (`31714de`).
+  - Nobody in the survey has reported an RDNA 4 (RX 9000-series) result yet.
 - Candidate blockers, from the fork's own docs, all unverified on our side:
   1. **Rendering:** the BVH structure builder for ray-traced light stays off in real runs (all or none; some of its
      pipelines are refused by a 32-lane GPU or don't translate), and 5 of 64 trace programs don't translate. Result:
