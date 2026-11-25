@@ -2,7 +2,7 @@
 
 `boot-chain.bundle` holds our work on top of upstream Leonida `main` `042c5f37`: one test fix and the open upstream
 pull requests for the retail boot chain, merged in boot-chain order. Conflict resolutions are explained in each merge
-commit. The list of what is included is in `../PROGRESS.md` ("Integration branch").
+commit. The list of what is included is in `PROGRESS.md` in this folder ("Integration branch").
 
 No game data is in here: only source code from the public repository and our merges.
 
