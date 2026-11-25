@@ -94,7 +94,24 @@ Relevant to our blockers:
 | upstream PR | 1883 | lane masks a traversal keeps as numbers | ray traversal translation |
 | upstream PRs | 1898, 1894, 1888, 1884, 1869, 1865, 1873 | pipeline scheduling, upload pools, copy plans, memory-guard batching, copy-back ranges, dirty bitmaps, detile scratch | CPU-side frame-time candidates; which matter depends on our baseline split |
 
-Re-survey at the start of every session, and update this table.
+### Read cursor: only what is newer than this is read next time
+
+| Source | Last seen |
+|---|---|
+| `fxceless/victory-fork` main | commit `31714de` (2026-11-24 19:00 -0500) |
+| `fxceless/victory-fork` PRs / issues | PR #421, issue #422 |
+| `Marvisak/VIctory` open PRs | #1907 |
+| Forks | surveyed 2026-11-25 ~00:40 UTC (most-recently-updated list) |
+
+### The continuous loop (each pass, whether started by the user or by the schedule)
+
+1. Read only what is new since the cursor: `git fetch` both mains, plus PRs and issues numbered above it. Add the
+   relevant items to the table above. Advance the cursor.
+2. Our open patches: rebase onto fork main and drop any that landed upstream. Then build, run CI's clippy gates, and
+   run the tests that can run here.
+3. The current blocker. If the user's PC is attached: run the experiment and measure. If not: do only work that unit
+   tests can check here (translator, ray-test maths), and mark it unverified on a GPU.
+4. Commit and push our branch and these notes. A pull request to `fxceless` is shown to the user first.
 
 ## Waiting on the user (at the PC)
 
