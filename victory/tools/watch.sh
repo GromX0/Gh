@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Watches for outside work on the VIctory fork and upstream VIctory, using no tokens while nothing changes.
-# Every $INTERVAL seconds it checks:
+# It waits $INTERVAL seconds, then checks:
 #   - the newest commit on fxceless/victory-fork main and on Marvisak/VIctory main (git ls-remote)
 #   - pull requests and issues numbered above the last seen ones (GitHub search API, via gh)
 # When anything is new, it appends a block to $STATE/inbox.txt, advances its cursor and exits 0, so the session
@@ -25,6 +25,8 @@ newer() { # repo, last number, kind (pr|issue) -> lines "number<TAB>title<TAB>au
 }
 
 while :; do
+    # Wait first, so that a restart right after a wake gathers a whole interval's worth of items.
+    sleep "$INTERVAL"
     found=""
     fork_main_now=$(git ls-remote "https://github.com/$FORK" refs/heads/main 2>/dev/null | cut -c1-40)
     up_main_now=$(git ls-remote "https://github.com/$UP" refs/heads/main 2>/dev/null | cut -c1-40)
@@ -36,7 +38,7 @@ while :; do
     if [ -z "$fork_main_now" ] || [ -z "$up_main_now" ]; then
         errors=$((errors + 1))
         [ $errors -ge 5 ] && { echo "watch: 5 failed checks in a row" >&2; exit 2; }
-        sleep "$INTERVAL"; continue
+        continue
     fi
     errors=0
 
@@ -62,5 +64,4 @@ while :; do
         cat "$STATE/pending.txt"
         exit 0
     fi
-    sleep "$INTERVAL"
 done
