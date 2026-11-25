@@ -1,0 +1,40 @@
+From 4fe5b739c4674886948af92b8e2d275bd97df283 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Wed, 25 Nov 2026 00:16:03 +0000
+Subject: [PATCH] Name the builder stages that hold the ray-tracing structure
+ builder off
+
+When VICTORY_BVH_BUILDER=1 and the builder stays off, a diagnostics build
+now logs each builder stage without a host pipeline and why: the shader
+hashes that do not translate, or the pipeline the host refused (for
+example a wave64 program on a 32-lane GPU). Before, only the count was
+logged, so the next fix had to be found by hand.
+---
+ crates/victory-gpu/src/pipeline.rs | 11 +++++++++++
+ 1 file changed, 11 insertions(+)
+
+diff --git a/crates/victory-gpu/src/pipeline.rs b/crates/victory-gpu/src/pipeline.rs
+index 60ed05c..ff5c8c3 100644
+--- a/crates/victory-gpu/src/pipeline.rs
++++ b/crates/victory-gpu/src/pipeline.rs
+@@ -297,6 +297,17 @@ pub(crate) fn builder_runs() -> bool {
+     let missing = b.pipelines.iter().filter(|p| !make::now(p)).count();
+     if missing > 0 {
+         b.off = true;
++        // Which stages hold the builder off, and why (a shader that does not
++        // translate, or a pipeline the host refused): what the next fix needs.
++        #[cfg(feature = "diagnostics")]
++        for (stage, why) in b
++            .pipelines
++            .iter()
++            .enumerate()
++            .filter_map(|(i, p)| make::missing(p).map(|why| (i, why)))
++        {
++            tracing::warn!(stage, why, "ray-tracing structure builder stage without a host pipeline");
++        }
+         tracing::warn!(
+             missing,
+             of = b.pipelines.len(),
+-- 
+2.43.0
+

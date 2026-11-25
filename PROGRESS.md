@@ -7,6 +7,10 @@ Vulkan.
 
 This file is the persistent record across sessions. Update it at the end of every session.
 
+> Session 2 (2026-11-25) worked on a different project, the VIctory fork (`fxceless/victory-fork`): see
+> [`victory/PROGRESS.md`](victory/PROGRESS.md). One finding there applies here too: Ubuntu's Wine 9.0 startup crash
+> (`free(): invalid pointer`, below) is caused by `TMPDIR` being set; `unset TMPDIR` and it runs.
+
 ## Evidence levels (never conflate these)
 
 | Level | Meaning | Status (2026-11-23) |
