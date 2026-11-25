@@ -7,7 +7,7 @@ compatibility layer only. Obtaining or redistributing game files, and bypassing 
 The fork is a Windows-only Rust project and a fork of [VIctory](https://github.com/Marvisak/VIctory). The title's
 x86-64 code runs unchanged in-process, `victory-hle` supplies the console's platform services, `victory-gpu` maps
 D3D12.X onto host D3D12, and `victory-shader` recompiles the console's RDNA2 GPU code to DXIL when the title creates a
-pipeline. An earlier plan using Leonida is paused; its record is in [`leonida/PROGRESS.md`](leonida/PROGRESS.md).
+pipeline.
 
 This file is the record across sessions. Update it at the end of every session with the commit, commands, results,
 hypotheses and next steps.
